@@ -1,0 +1,62 @@
+@startuml Kafka to EventBridge Connector
+
+participant "User" as User
+participant "Spring Boot Application" as App
+participant "Apache Kafka" as Kafka
+participant "Confluent Schema Registry" as Confluent
+participant "Redis Cache" as Redis
+participant "AWS IAM" as AWS
+participant "AWS EventBridge" as EventBridge
+
+User -> App: Start application
+App -> Kafka: INPUT: Subscribe (topic=SBNA.00002517.MIP_INS_HIST_EJ.MODIFY.AVRO)
+Kafka --> App: OUTPUT: Subscription confirmation
+
+== Main Flow ==
+
+Kafka -> App: INPUT: Kafka Message\n(G6181_IDEMPR, G6181_CCENCONT, G6181_CODESTA2="13", etc.)
+
+App -> Confluent: INPUT: Schema request\n(subject=SBNA.00002517.MIP_INS_HIST_EJ.MODIFY.AVRO-value)
+Confluent --> App: OUTPUT: Avro Schema
+
+note over App: Validation: CODESTA2 = "13"
+
+alt CODESTA2 is valid
+    App -> Redis: INPUT: Query\n(key=aws:credentials:aws1)
+    
+    alt Credentials in cache
+        Redis --> App: OUTPUT: AWS1 Credentials\n{accessKey, secretKey, sessionToken}
+    else Credentials not available
+        App -> AWS: INPUT: IAM Request\n(certificate, profileArn, trustAnchorArn)
+        AWS --> App: OUTPUT: Temporary credentials\n{accessKey, secretKey, sessionToken}
+        App -> Redis: INPUT: Store\n(key=aws:credentials:aws1, value=credentials, ttl=3500s)
+        Redis --> App: OUTPUT: Confirmation
+    end
+    
+    App -> EventBridge: INPUT: PutEvents AWS1\n{eventBusName, source="openbank.payments",\ndetailType="Transfer_KO", detail={payload}}
+    EventBridge --> App: OUTPUT: Response\n{Entries, FailedEntryCount}
+    
+    note over App: Check awsDestiny
+    
+    alt Send to AWS2
+        App -> Redis: INPUT: Query\n(key=aws:credentials:aws2)
+        alt Credentials in cache
+            Redis --> App: OUTPUT: AWS2 Credentials
+        else Credentials not available
+            App -> AWS: INPUT: IAM Request\n(certificate, profileArn, trustAnchorArn)
+            AWS --> App: OUTPUT: Temporary credentials
+            App -> Redis: INPUT: Store\n(key=aws:credentials:aws2, value=credentials, ttl=3500s)
+        end
+        
+        App -> EventBridge: INPUT: PutEvents AWS2\n{eventBusName, source, detailType, detail}
+        EventBridge --> App: OUTPUT: Response\n{Entries, FailedEntryCount}
+    end
+else CODESTA2 is not valid
+    note over App: Do not send to EventBridge
+end
+
+App -> Kafka: OUTPUT: Acknowledge
+
+note over User, EventBridge: End of flow
+
+@enduml
