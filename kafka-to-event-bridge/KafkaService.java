@@ -1,5 +1,51 @@
 package com.empresa.connector.service;
 
+import org.springframework.kafka.support.Acknowledgment;
+
+/**
+ * Service interface for processing Kafka messages
+ */
+public interface KafkaProcessingService {
+    
+    /**
+     * Processes a Kafka payment message
+     * 
+     * @param payload The Kafka message payload
+     * @param topic The Kafka topic
+     * @param partition The Kafka partition
+     * @param offset The message offset
+     * @param ack The Kafka acknowledgment
+     */
+    void processPaymentMessage(String payload, String topic, Integer partition, Long offset, Acknowledgment ack);
+    
+    /**
+     * Validates if a CODESTA2 value is valid
+     * 
+     * @param codesta2 The CODESTA2 value to validate
+     * @return true if valid, false otherwise
+     */
+    boolean isValidCodesta2(String codesta2);
+    
+    /**
+     * Determines if a message should be sent to AWS1
+     * 
+     * @param message The transformed message
+     * @return true if it should be sent to AWS1
+     */
+    boolean shouldSendToAws1(String message);
+    
+    /**
+     * Determines if a message should be sent to AWS2
+     * 
+     * @param message The transformed message
+     * @return true if it should be sent to AWS2
+     */
+    boolean shouldSendToAws2(String message);
+}
+
+
+package com.empresa.connector.service;
+
 import com.empresa.connector.model.kafka.KafkaPaymentMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
