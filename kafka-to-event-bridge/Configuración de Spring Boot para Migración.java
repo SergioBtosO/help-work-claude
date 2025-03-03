@@ -784,4 +784,32 @@ public class AwsCredentials {
     @JsonProperty("Region")
     private String region;
     
-    private static final ObjectMapper objectMapper = new
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+    
+    /**
+     * Convierte las credenciales de AWS a formato JSON
+     * @return String con el formato JSON de las credenciales
+     * @throws JsonProcessingException si ocurre un error al procesar el JSON
+     */
+    public String toJson() throws JsonProcessingException {
+        return objectMapper.writeValueAsString(this);
+    }
+    
+    /**
+     * Crea un objeto AwsCredentials a partir de un String en formato JSON
+     * @param json String con el formato JSON de las credenciales
+     * @return Objeto AwsCredentials con los datos del JSON
+     * @throws JsonProcessingException si ocurre un error al procesar el JSON
+     */
+    public static AwsCredentials fromJson(String json) throws JsonProcessingException {
+        return objectMapper.readValue(json, AwsCredentials.class);
+    }
+    
+    /**
+     * Verifica si las credenciales son temporales
+     * @return true si las credenciales son temporales (tienen sessionToken), false en caso contrario
+     */
+    public boolean isTemporary() {
+        return sessionToken != null && !sessionToken.isEmpty();
+    }
+}
