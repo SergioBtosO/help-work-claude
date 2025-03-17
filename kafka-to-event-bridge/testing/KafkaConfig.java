@@ -6,8 +6,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.config.KafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
+import org.springframework.kafka.listener.KafkaMessageListenerContainer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -52,7 +55,7 @@ public class KafkaConfig {
     }
 
     /**
-     * Configuración de la fábrica de contenedores de listeners de Kafka
+     * Configuración de la fábrica de contenedores de listeners de Kafka para anotaciones
      * @return La fábrica de contenedores de listeners de Kafka
      */
     @Bean
@@ -60,6 +63,19 @@ public class KafkaConfig {
         ConcurrentKafkaListenerContainerFactory<String, String> factory = 
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
+        return factory;
+    }
+    
+    /**
+     * Configuración de la fábrica de contenedores de listeners de Kafka para inicialización programática
+     * @return La fábrica de contenedores de listeners de Kafka
+     */
+    @Bean
+    public KafkaListenerContainerFactory<KafkaMessageListenerContainer<String, String>> kafkaListenerContainerFactoryForService() {
+        ConcurrentKafkaListenerContainerFactory<String, String> factory = 
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        factory.setConcurrency(1); // Ajustar según necesidades
         return factory;
     }
 }
