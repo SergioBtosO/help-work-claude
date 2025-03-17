@@ -9,14 +9,12 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
-import org.springframework.kafka.listener.AcknowledgingMessageListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
@@ -27,6 +25,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -36,7 +35,7 @@ import static org.mockito.Mockito.*;
 @EmbeddedKafka(partitions = 1, topics = "${kafka.topic.name}")
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-public class KafkaServiceAckTest {
+public class KafkaServiceTest {
 
     @Autowired
     private EmbeddedKafkaBroker embeddedKafkaBroker;
@@ -88,6 +87,41 @@ public class KafkaServiceAckTest {
             "\"Headers\":null," +
             "\"Message\":\"\\u0011\\u00161Forge.MIP_INS_HIST_E\\u0014\\u0025\\u0015737df\\u0017\\u0014\\u001f\\u00006\\u0018\\u0004cuso\\u001e\\u001925-03-07 07:11:96700\\u00008\\u0014\\u00000\\u0014\\u0005ad\\u0014\\u0014\\u0005\u0006\"" +
         "}";
+    }
+
+    @Test
+    void testKafkaServiceMessageProcessing() throws Exception {
+        // Given
+        String message = createSampleMessage();
+
+        // When - Enviar un mensaje al tópico
+        producer.send(new ProducerRecord<>(topic, message)).get();
+        
+        // Then - Verificar que el servicio de orquestación fue llamado con el mensaje correcto
+        verify(orchestratorService, timeout(10000)).processMessage(message);
+    }
+
+    @Test
+    void testMultipleMessageProcessing() throws Exception {
+        // Given
+        int messageCount = 5;
+
+        // When - Enviar múltiples mensajes al tópico
+        for (int i = 0; i < messageCount; i++) {
+            String message = createSampleMessage();
+            producer.send(new ProducerRecord<>(topic, message)).get();
+        }
+        
+        // Then - Verificar que cada mensaje fue procesado
+        for (int i = 0; i < messageCount; i++) {
+            verify(orchestratorService, timeout(10000)).processMessage(createSampleMessage());
+        }
+    }
+
+    @Test
+    void testKafkaServiceStarts() {
+        // Verificar que el servicio de Kafka se inicia sin errores
+        assertThat(kafkaService).isNotNull();
     }
 
     @Test
