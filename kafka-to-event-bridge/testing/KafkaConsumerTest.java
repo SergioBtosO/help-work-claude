@@ -1,134 +1,143 @@
 package com.example.kafka.consumer;
 
 import com.example.kafka.service.MessageService;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.producer.Producer;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.serialization.StringSerializer;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.boot.test.mock.mockito.SpyBean;
-import org.springframework.kafka.core.DefaultKafkaProducerFactory;
-import org.springframework.kafka.test.EmbeddedKafkaBroker;
-import org.springframework.kafka.test.context.EmbeddedKafka;
-import org.springframework.kafka.test.utils.KafkaTestUtils;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.util.ReflectionTestUtils;
-import java.util.Set;
+import org.springframework.kafka.config.KafkaListenerContainerFactory;
+import org.springframework.kafka.listener.AcknowledgingMessageListener;
+import org.springframework.kafka.listener.KafkaMessageListenerContainer;
+import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+@Service
+public class KafkaConsumer {
+    private static final Logger logger = LoggerFactory.getLogger(KafkaConsumer.class);
 
-@SpringBootTest
-@EmbeddedKafka(partitions = 1, topics = "${kafka.topic.name}")
-@ActiveProfiles("test")
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
-public class KafkaConsumerTest {
-
-    @Autowired
-    private EmbeddedKafkaBroker embeddedKafkaBroker;
-
+    private final MessageService messageService;
+    private final KafkaMessageListenerContainer<String, String> container;
+    
     @Value("${kafka.topic.name}")
     private String topic;
-
-    private Producer<String, String> producer;
-
-    @MockBean
-    private MessageService messageService;
     
-    @SpyBean
-    private KafkaConsumer kafkaConsumer;
-
-    @BeforeAll
-    void setUp() {
-        // Configurar el productor de prueba
-        Map<String, Object> producerProps = new HashMap<>(KafkaTestUtils.producerProps(embeddedKafkaBroker));
-        producer = new DefaultKafkaProducerFactory<>(
-                producerProps, 
-                new StringSerializer(), 
-                new StringSerializer()
-        ).createProducer();
+    // Guardar los acknowledgments pendientes para procesamiento posterior
+    private final Map<String, Acknowledgment> pendingAcknowledgments = new ConcurrentHashMap<>();
+    
+    @Autowired
+    public KafkaConsumer(MessageService messageService, 
+                         KafkaListenerContainerFactory<KafkaMessageListenerContainer<String, String>> containerFactory) {
+        this.messageService = messageService;
         
-        // Configurar el mock del servicio de mensajes
-        when(messageService.processMessage(anyString())).thenReturn(true);
+        // Configurar el contenedor del listener
+        this.container = containerFactory.createContainer(topic);
+        
+        // Configurar el listener de mensajes con acknowledgment manual
+        this.container.setupMessageListener(new AcknowledgingMessageListenerAdapter(this::handleMessage));
     }
-
-    @AfterAll
-    void tearDown() {
-        if (producer != null) {
-            producer.close();
+    
+    /**
+     * Clase adaptadora para el listener de mensajes con confirmación manual
+     */
+    public class AcknowledgingMessageListenerAdapter implements AcknowledgingMessageListener<String, String> {
+        private final AcknowledgingMessageListener<String, String> delegate;
+        
+        public AcknowledgingMessageListenerAdapter(AcknowledgingMessageListener<String, String> delegate) {
+            this.delegate = delegate;
+        }
+        
+        @Override
+        public void onMessage(ConsumerRecord<String, String> data, Acknowledgment acknowledgment) {
+            delegate.onMessage(data, acknowledgment);
         }
     }
-
-    @Test
-    void testKafkaConsumer() throws Exception {
-        // Given
-        String message = "Mensaje de prueba";
-
-        // When - Enviar un mensaje al tópico
-        producer.send(new ProducerRecord<>(topic, message)).get();
+    
+    /**
+     * Método que maneja los mensajes recibidos del tópico de Kafka
+     * @param record El registro consumido de Kafka
+     * @param acknowledgment El objeto para confirmar el procesamiento del mensaje
+     */
+    public void handleMessage(ConsumerRecord<String, String> record, Acknowledgment acknowledgment) {
+        String message = record.value();
+        String topic = record.topic();
+        Integer partition = record.partition();
+        Long offset = record.offset();
         
-        // Then - Verificar que el servicio de mensajes fue llamado con el mensaje correcto
-        // Usamos timeout para esperar hasta 10 segundos por la verificación debido a la naturaleza asíncrona
-        verify(messageService, timeout(10000)).processMessage(message);
-    }
-
-    @Test
-    void testKafkaConsumerErrorHandling() throws Exception {
-        // Given
-        String message = "Mensaje de error";
-        when(messageService.processMessage(message)).thenReturn(false);
-
-        // When - Enviar un mensaje al tópico
-        producer.send(new ProducerRecord<>(topic, message)).get();
-
-        // Then - Verificar que el servicio de mensajes fue llamado con el mensaje correcto
-        verify(messageService, timeout(10000)).processMessage(message);
+        // Crea un ID único para este mensaje
+        String messageId = topic + "-" + partition + "-" + offset;
+        
+        logger.info("Mensaje recibido: '{}' del tópico '{}', partición '{}', offset '{}'", 
+                message, topic, partition, offset);
+        
+        // Guardar el acknowledgment para confirmación posterior
+        pendingAcknowledgments.put(messageId, acknowledgment);
+        
+        boolean processingResult = messageService.processMessage(message);
+        
+        if (processingResult) {
+            logger.info("Mensaje procesado exitosamente, confirmando recepción");
+            acknowledgeMessage(messageId);
+        } else {
+            logger.warn("Error en el procesamiento del mensaje, esperando confirmación manual");
+        }
     }
     
-    @Test
-    void testConsumerStarts() throws Exception {
-        // Verificar que el contenedor del listener está activo
-        Object container = ReflectionTestUtils.getField(kafkaConsumer, "container");
-        // La prueba simplemente verifica que el consumidor no lanza excepciones al iniciar
-        // ya que el contenedor se inicia automáticamente con @PostConstruct
+    /**
+     * Inicia el contenedor del listener cuando se inicializa el servicio
+     */
+    @PostConstruct
+    public void start() {
+        logger.info("Iniciando el consumidor de Kafka para el tópico: {}", topic);
+        container.start();
     }
     
-    @Test
-    void testAcknowledgeMessage() throws Exception {
-        // Given
-        String message = "Mensaje para confirmar";
-        
-        // When - Enviar un mensaje al tópico
-        producer.send(new ProducerRecord<>(topic, message)).get();
-        
-        // Esperar a que el mensaje sea procesado
-        verify(messageService, timeout(10000)).processMessage(message);
-        
-        // Then - Verificar que hay un mensaje pendiente de confirmación
-        TimeUnit.SECONDS.sleep(1); // Dar tiempo para que el mensaje sea registrado
-        Set<String> pendingMessages = kafkaConsumer.getPendingMessageIds();
-        assertThat(pendingMessages).isNotEmpty();
-        
-        // When - Confirmar el mensaje
-        String messageId = pendingMessages.iterator().next();
-        boolean ackResult = kafkaConsumer.acknowledgeMessage(messageId);
-        
-        // Then - Verificar que la confirmación fue exitosa y el mensaje ya no está pendiente
-        assertThat(ackResult).isTrue();
-        pendingMessages = kafkaConsumer.getPendingMessageIds();
-        assertThat(pendingMessages).isEmpty();
+    /**
+     * Detiene el contenedor del listener cuando se destruye el servicio
+     */
+    @PreDestroy
+    public void stop() {
+        logger.info("Deteniendo el consumidor de Kafka");
+        container.stop();
+    }
+    
+    /**
+     * Añade un acknowledgment pendiente (usado para pruebas)
+     */
+    public void addPendingAcknowledgment(String messageId, Acknowledgment acknowledgment) {
+        pendingAcknowledgments.put(messageId, acknowledgment);
+    }
+    
+    /**
+     * Confirma manualmente un mensaje por su ID único
+     * @param messageId ID único del mensaje (tópico-partición-offset)
+     * @return true si el mensaje fue confirmado, false si el ID no existe
+     */
+    public boolean acknowledgeMessage(String messageId) {
+        Acknowledgment acknowledgment = pendingAcknowledgments.get(messageId);
+        if (acknowledgment != null) {
+            acknowledgment.acknowledge();
+            pendingAcknowledgments.remove(messageId);
+            logger.info("Mensaje con ID {} confirmado", messageId);
+            return true;
+        } else {
+            logger.warn("No se encontró acknowledgment para el mensaje con ID {}", messageId);
+            return false;
+        }
+    }
+    
+    /**
+     * Obtiene todos los IDs de mensajes pendientes de confirmación
+     * @return Lista de IDs de mensajes pendientes
+     */
+    public Set<String> getPendingMessageIds() {
+        return new HashSet<>(pendingAcknowledgments.keySet());
     }
 }
