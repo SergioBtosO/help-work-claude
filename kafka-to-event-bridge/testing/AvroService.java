@@ -4,14 +4,10 @@ import com.example.kafka.avro.KafkaMessage;
 import com.example.kafka.model.PlainTextMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericDatumWriter;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.EncoderFactory;
 import org.apache.avro.io.JsonEncoder;
@@ -22,7 +18,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.HashMap;
 import java.util.Map;
@@ -39,6 +34,9 @@ public class AvroJsonService {
     private final KafkaAvroSerializer avroSerializer;
     private final ObjectMapper objectMapper = new ObjectMapper();
     
+    @Value("${schema.registry.url}")
+    private String schemaRegistryUrl;
+    
     @Value("${schema.subject:kafka-message-value}")
     private String schemaSubject;
     
@@ -48,17 +46,17 @@ public class AvroJsonService {
         
         // Configurar el serializador Avro
         Map<String, Object> config = new HashMap<>();
-        config.put("schema.registry.url", "http://localhost:8081");
+        config.put("schema.registry.url", schemaRegistryUrl);
         config.put("auto.register.schemas", true);
         
         this.avroSerializer = new KafkaAvroSerializer(schemaRegistryClient);
         this.avroSerializer.configure(config, false);
+        
+        logger.info("AvroJsonService inicializado para subject: {}", schemaSubject);
     }
     
     /**
-     * Convierte un mensaje de texto plano a un objeto Avro
-     * @param plainText El mensaje como texto plano
-     * @return El objeto Avro
+     * Crea un mensaje Avro a partir de texto plano
      */
     public KafkaMessage createAvroMessage(String plainText) {
         return KafkaMessage.newBuilder()
@@ -71,12 +69,9 @@ public class AvroJsonService {
     }
     
     /**
-     * Convierte un objeto PlainTextMessage a un objeto Avro
-     * @param message El objeto mensaje
-     * @return El objeto Avro
+     * Crea un mensaje Avro a partir de un PlainTextMessage
      */
     public KafkaMessage createAvroMessage(PlainTextMessage message) {
-        // Convertir propiedades a formato compatible con AVRO
         Map<CharSequence, CharSequence> avroProperties = new HashMap<>();
         if (message.getProperties() != null) {
             message.getProperties().forEach((key, value) -> 
@@ -94,9 +89,7 @@ public class AvroJsonService {
     }
     
     /**
-     * Serializa un objeto Avro a formato binario
-     * @param avroMessage El objeto Avro a serializar
-     * @return Los bytes serializados
+     * Serializa un mensaje Avro y lo registra en Schema Registry
      */
     public byte[] serializeAvro(KafkaMessage avroMessage) {
         try {
@@ -108,32 +101,22 @@ public class AvroJsonService {
     }
     
     /**
-     * Convierte un objeto Avro a formato JSON
-     * @param avroMessage El objeto Avro
-     * @return El nodo JSON resultante
+     * Convierte un mensaje Avro a formato JSON
      */
     public JsonNode avroToJson(KafkaMessage avroMessage) {
         try {
             // Obtener el esquema
             Schema schema = avroMessage.getSchema();
             
-            // Serializar a Avro binario primero
-            byte[] avroData = serializeAvro(avroMessage);
-            
-            // Convertir de Avro binario a JSON
+            // Serializar a formato JSON
             ByteArrayOutputStream jsonOutputStream = new ByteArrayOutputStream();
-            JsonEncoder jsonEncoder = EncoderFactory.get().jsonEncoder(schema, jsonOutputStream);
-            
-            // Usar SpecificDatumReader para objetos Avro generados
-            SpecificDatumReader<KafkaMessage> reader = new SpecificDatumReader<>(schema);
-            BinaryDecoder binaryDecoder = DecoderFactory.get().binaryDecoder(avroData, null);
-            KafkaMessage result = reader.read(null, binaryDecoder);
+            JsonEncoder jsonEncoder = EncoderFactory.get().jsonEncoder(schema, jsonOutputStream, false);
             
             GenericDatumWriter<KafkaMessage> writer = new GenericDatumWriter<>(schema);
-            writer.write(result, jsonEncoder);
+            writer.write(avroMessage, jsonEncoder);
             jsonEncoder.flush();
             
-            // Convertir la salida JSON a JsonNode
+            // Convertir a JsonNode
             return objectMapper.readTree(jsonOutputStream.toString());
         } catch (Exception e) {
             logger.error("Error convirtiendo Avro a JSON", e);
@@ -142,9 +125,7 @@ public class AvroJsonService {
     }
     
     /**
-     * Procesa un mensaje, serializándolo con Avro y luego convirtiéndolo a JSON
-     * @param plainText El mensaje como texto plano
-     * @return El nodo JSON resultante
+     * Procesa un mensaje de texto, serializándolo con Avro y convirtiéndolo a JSON
      */
     public JsonNode processMessage(String plainText) {
         try {
@@ -153,7 +134,7 @@ public class AvroJsonService {
             // Crear mensaje Avro
             KafkaMessage avroMessage = createAvroMessage(plainText);
             
-            // Serializar con Avro (para verificar y registrar el esquema)
+            // Serializar con Avro (registra en Schema Registry)
             byte[] avroData = serializeAvro(avroMessage);
             logger.info("Mensaje serializado a Avro. Tamaño: {} bytes", avroData.length);
             
@@ -169,9 +150,7 @@ public class AvroJsonService {
     }
     
     /**
-     * Procesa un objeto PlainTextMessage, serializándolo con Avro y luego convirtiéndolo a JSON
-     * @param message El objeto mensaje
-     * @return El nodo JSON resultante
+     * Procesa un objeto PlainTextMessage, serializándolo con Avro y convirtiéndolo a JSON
      */
     public JsonNode processMessage(PlainTextMessage message) {
         try {
@@ -180,7 +159,7 @@ public class AvroJsonService {
             // Crear mensaje Avro
             KafkaMessage avroMessage = createAvroMessage(message);
             
-            // Serializar con Avro (para verificar y registrar el esquema)
+            // Serializar con Avro (registra en Schema Registry)
             byte[] avroData = serializeAvro(avroMessage);
             logger.info("Mensaje serializado a Avro. Tamaño: {} bytes", avroData.length);
             
@@ -196,9 +175,7 @@ public class AvroJsonService {
     }
     
     /**
-     * Obtiene el resultado JSON como String
-     * @param jsonNode El nodo JSON
-     * @return La representación en String del JSON
+     * Obtiene la representación en String de un JsonNode
      */
     public String getJsonString(JsonNode jsonNode) {
         try {

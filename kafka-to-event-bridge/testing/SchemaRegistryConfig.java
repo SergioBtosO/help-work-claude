@@ -38,7 +38,6 @@ public class SchemaRegistryConfig {
             configs.put("basic.auth.user.info", username + ":" + password);
         }
         
-        // Usar serializador AVRO (pero luego convertiremos a JSON)
         return new CachedSchemaRegistryClient(
                 restService, 
                 maxCachedSchemas, 
