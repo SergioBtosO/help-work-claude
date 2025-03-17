@@ -1,4 +1,5 @@
-package com.example.kafka.config;
+    @Value("${spring.kafka.properties.schema.registry.url}")
+    private String schemaRegistryUrl;package com.example.kafka.config;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -46,6 +47,7 @@ public class KafkaConfig {
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         
         // Configuración de seguridad SASL
         props.put("security.protocol", securityProtocol);
@@ -55,10 +57,6 @@ public class KafkaConfig {
         return new DefaultKafkaConsumerFactory<>(props);
     }
 
-    /**
-     * Configuración de la fábrica de contenedores de listeners de Kafka para anotaciones
-     * @return La fábrica de contenedores de listeners de Kafka
-     */
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
         ConcurrentKafkaListenerContainerFactory<String, String> factory = 

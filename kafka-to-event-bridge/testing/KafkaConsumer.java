@@ -32,7 +32,6 @@ public class KafkaConsumer {
         this.messageService = messageService;
         
         // Configurar el contenedor del listener
-        ContainerProperties containerProperties = new ContainerProperties(topic);
         this.container = containerFactory.createContainer(topic);
         
         // Configurar el listener de mensajes con acknowledgment manual

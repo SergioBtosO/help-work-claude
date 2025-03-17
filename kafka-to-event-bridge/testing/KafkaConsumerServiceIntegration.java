@@ -40,7 +40,11 @@ public class KafkaConsumerServiceIntegrationTest {
     void setUp() {
         // Configurar el productor de prueba
         Map<String, Object> producerProps = new HashMap<>(KafkaTestUtils.producerProps(embeddedKafkaBroker));
-        producer = new DefaultKafkaProducerFactory<>(producerProps, new StringSerializer(), new StringSerializer()).createProducer();
+        producer = new DefaultKafkaProducerFactory<>(
+                producerProps, 
+                new StringSerializer(), 
+                new StringSerializer()
+        ).createProducer();
     }
 
     @AfterAll
