@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -190,6 +191,7 @@ public class AwsIamAuthGenerateTest {
         
         ResponseEntity<Map> mockResponse = new ResponseEntity<>(responseBody, HttpStatus.OK);
         
+        // Configurar el mock para cualquier URL y cualquier HttpEntity
         when(restTemplate.postForEntity(
                 anyString(), 
                 any(HttpEntity.class), 
@@ -221,8 +223,10 @@ public class AwsIamAuthGenerateTest {
         String iamHost = "rolesanywhere.us-east-1.amazonaws.com";
         Map<String, Object> requestBody = new HashMap<>();
         
+        // Crear una respuesta con error 401
         ResponseEntity<Map> mockResponse = new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
         
+        // Configurar mock para devolver error independientemente de los parámetros
         when(restTemplate.postForEntity(
                 anyString(), 
                 any(HttpEntity.class), 
@@ -249,6 +253,7 @@ public class AwsIamAuthGenerateTest {
         String iamHost = "rolesanywhere.us-east-1.amazonaws.com";
         Map<String, Object> requestBody = new HashMap<>();
         
+        // Configurar el mock para lanzar una excepción cuando se llame
         when(restTemplate.postForEntity(
                 anyString(), 
                 any(HttpEntity.class), 
