@@ -16,15 +16,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Clase utilitaria para manejar la autenticación con AWS IAM,
- * incluyendo la decodificación de Base64 y generación de headers.
+ * Utility class for handling AWS IAM authentication,
+ * including Base64 decoding and header generation.
  */
 @Component
 public class AwsIamAuthUtil {
     
     private static final Logger logger = LoggerFactory.getLogger(AwsIamAuthUtil.class);
     
-    // Constantes para construcción de PEM, definidas para evitar alertas de seguridad
+    // Constants for PEM construction, defined to avoid security alerts
     private static final String CERT_HEADER = "-----" + "BEGIN CERTIFICATE" + "-----\n";
     private static final String CERT_FOOTER = "-----" + "END CERTIFICATE" + "-----";
     private static final String KEY_HEADER_PART1 = "-----" + "BEGIN ";
@@ -33,39 +33,40 @@ public class AwsIamAuthUtil {
     private static final String KEY_FOOTER_PART2 = "PRIVATE KEY" + "-----";
     
     /**
-     * Decodifica un certificado o clave en formato Base64
+     * Decodes a Base64 encoded certificate or key
      * 
-     * @param base64String String en formato Base64
-     * @return Bytes decodificados
+     * @param base64String String in Base64 format
+     * @return Decoded bytes
+     * @throws IllegalArgumentException if the input is null, empty, or invalid Base64
      */
     public byte[] decodeBase64(String base64String) {
         try {
             if (base64String == null || base64String.trim().isEmpty()) {
-                throw new IllegalArgumentException("El string Base64 no puede ser nulo o vacío");
+                throw new IllegalArgumentException("Base64 string cannot be null or empty");
             }
             
-            // Limpiar la cadena de espacios y saltos de línea
+            // Clean whitespace and line breaks
             String cleanedString = base64String.replaceAll("\\s", "");
             
-            // Decodificar
+            // Decode
             return Base64.getDecoder().decode(cleanedString);
         } catch (IllegalArgumentException e) {
-            logger.error("Error al decodificar Base64: {}", e.getMessage());
-            throw new IllegalArgumentException("La cadena proporcionada no es Base64 válido", e);
+            logger.error("Error decoding Base64: {}", e.getMessage());
+            throw new IllegalArgumentException("The provided string is not valid Base64", e);
         }
     }
     
     /**
-     * Convierte bytes decodificados de certificado a formato PEM
+     * Converts decoded certificate bytes to PEM format
      * 
-     * @param certificateBytes Bytes del certificado
-     * @return Certificado en formato PEM
+     * @param certificateBytes Certificate bytes
+     * @return Certificate in PEM format
      */
     public String convertToPem(byte[] certificateBytes) {
         StringBuilder sb = new StringBuilder();
         sb.append(CERT_HEADER);
         
-        // Convertir a Base64 y formatear con líneas de 64 caracteres
+        // Convert to Base64 and format with 64-character lines
         String base64Cert = Base64.getEncoder().encodeToString(certificateBytes);
         for (int i = 0; i < base64Cert.length(); i += 64) {
             int end = Math.min(i + 64, base64Cert.length());
@@ -77,17 +78,17 @@ public class AwsIamAuthUtil {
     }
     
     /**
-     * Convierte bytes decodificados de clave privada a formato PEM,
-     * evitando cadenas literales que puedan causar alertas de seguridad
+     * Converts decoded private key bytes to PEM format,
+     * avoiding literal strings that might trigger security alerts
      * 
-     * @param keyBytes Bytes de la clave privada
-     * @return Clave privada en formato PEM
+     * @param keyBytes Private key bytes
+     * @return Private key in PEM format
      */
     public String convertKeyToPem(byte[] keyBytes) {
         StringBuilder sb = new StringBuilder();
         sb.append(KEY_HEADER_PART1).append(KEY_HEADER_PART2);
         
-        // Convertir a Base64 y formatear con líneas de 64 caracteres
+        // Convert to Base64 and format with 64-character lines
         String base64Key = Base64.getEncoder().encodeToString(keyBytes);
         for (int i = 0; i < base64Key.length(); i += 64) {
             int end = Math.min(i + 64, base64Key.length());
@@ -99,18 +100,18 @@ public class AwsIamAuthUtil {
     }
     
     /**
-     * Genera los headers para autenticación mTLS con AWS IAM
+     * Generates headers for mTLS authentication with AWS IAM
      * 
-     * @return HttpHeaders configurados para la solicitud
+     * @return HttpHeaders configured for the request
      */
     public HttpHeaders createIamAuthHeaders() {
         HttpHeaders headers = new HttpHeaders();
         
-        // Configurar tipos de contenido y aceptación
+        // Configure content type and accept headers
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("Accept", MediaType.APPLICATION_JSON_VALUE);
         
-        // Agregar fecha en formato ISO 8601
+        // Add date in ISO 8601 format
         String isoDate = ZonedDateTime.now().format(DateTimeFormatter.ISO_INSTANT);
         headers.set("X-Amz-Date", isoDate);
         
@@ -118,13 +119,13 @@ public class AwsIamAuthUtil {
     }
     
     /**
-     * Crea los encabezados para autenticación con AWS EventBridge
+     * Creates headers for authentication with AWS EventBridge
      * 
-     * @param accessKey La clave de acceso AWS
-     * @param secretKey La clave secreta AWS
-     * @param sessionToken El token de sesión AWS
-     * @param region La región AWS
-     * @return HttpHeaders configurados para AWS EventBridge
+     * @param accessKey AWS access key
+     * @param secretKey AWS secret key
+     * @param sessionToken AWS session token
+     * @param region AWS region
+     * @return HttpHeaders configured for AWS EventBridge
      */
     public HttpHeaders createEventBridgeHeaders(
             String accessKey,
@@ -134,33 +135,33 @@ public class AwsIamAuthUtil {
         
         HttpHeaders headers = new HttpHeaders();
         
-        // Configurar encabezados básicos
+        // Configure basic headers
         headers.set("Content-Type", "application/x-amz-json-1.1");
         headers.set("X-Amz-Target", "AWSEvents.PutEvents");
         
-        // Generar fecha en formato ISO 8601
+        // Generate ISO 8601 date format
         String amzDate = ZonedDateTime.now().format(DateTimeFormatter.ISO_INSTANT);
         headers.set("X-Amz-Date", amzDate);
         
-        // Agregar token de sesión si está disponible
+        // Add session token if available
         if (sessionToken != null && !sessionToken.isEmpty()) {
             headers.set("X-Amz-Security-Token", sessionToken);
         }
         
-        // Formato de fecha para la credencial
+        // Date format for credential
         String dateStamp = amzDate.substring(0, 10).replace("-", "");
         
-        // Crear la cadena de encabezados firmados
+        // Create signed headers string
         String signedHeaders = "content-type;host;x-amz-date;x-amz-target";
         if (sessionToken != null && !sessionToken.isEmpty()) {
             signedHeaders += ";x-amz-security-token";
         }
         
-        // En una implementación real, aquí calcularíamos la firma HMAC-SHA256
-        // Para esta implementación, usamos un valor de firma ficticio
+        // In a real implementation, we would calculate the HMAC-SHA256 signature
+        // For this implementation, we use a dummy signature value
         String signature = "calculatedSignatureWouldGoHere";
         
-        // Formar el encabezado de autorización
+        // Form authorization header
         String credential = accessKey + "/" + dateStamp + "/" + region + "/events/aws4_request";
         String authHeader = "AWS4-HMAC-SHA256 " +
                 "Credential=" + credential + ", " +
@@ -173,12 +174,13 @@ public class AwsIamAuthUtil {
     }
     
     /**
-     * Realiza una llamada a AWS IAM para obtener credenciales temporales usando mTLS
+     * Makes a call to AWS IAM to get temporary credentials using mTLS
      * 
-     * @param iamHost Host del servicio IAM
-     * @param requestBody Cuerpo de la solicitud
-     * @param restTemplate RestTemplate configurado para mTLS
-     * @return Mapa con las credenciales obtenidas
+     * @param iamHost IAM service host
+     * @param requestBody Request body
+     * @param restTemplate RestTemplate configured for mTLS
+     * @return Map with obtained credentials
+     * @throws RuntimeException if there's an error communicating with IAM
      */
     public Map<String, Object> getAwsCredentialsFromIam(
             String iamHost,
@@ -186,37 +188,37 @@ public class AwsIamAuthUtil {
             RestTemplate restTemplate) {
         
         try {
-            logger.info("Iniciando solicitud de credenciales a AWS IAM: {}", iamHost);
+            logger.info("Initiating credentials request to AWS IAM: {}", iamHost);
             
-            // Crear headers para la solicitud
+            // Create headers for the request
             HttpHeaders headers = createIamAuthHeaders();
             
-            // Crear entidad HTTP
+            // Create HTTP entity
             HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
             
-            // URL del endpoint IAM
+            // IAM endpoint URL
             String iamUrl = "https://" + iamHost + "/sessions";
             
-            logger.debug("Enviando solicitud a IAM: {}", iamUrl);
+            logger.debug("Sending request to IAM: {}", iamUrl);
             
-            // Ejecutar la solicitud
+            // Execute the request
             ResponseEntity<Map> response = restTemplate.postForEntity(
                     iamUrl, 
                     requestEntity, 
                     Map.class);
             
-            // Procesar la respuesta
+            // Process the response
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                logger.info("Credenciales obtenidas exitosamente de IAM");
+                logger.info("Successfully obtained credentials from IAM");
                 
-                // En una implementación real, extraerías los datos de credentials del body
+                // In a real implementation, you would extract credentials data from the body
                 @SuppressWarnings("unchecked")
                 Map<String, Object> responseBody = response.getBody();
                 
                 @SuppressWarnings("unchecked")
                 Map<String, Object> credentials = (Map<String, Object>) responseBody.get("credentials");
                 
-                // Extraer las credenciales y formatear respuesta
+                // Extract credentials and format response
                 Map<String, Object> result = new HashMap<>();
                 result.put("accessKey", credentials.get("accessKeyId"));
                 result.put("secretKey", credentials.get("secretAccessKey"));
@@ -225,26 +227,26 @@ public class AwsIamAuthUtil {
                 
                 return result;
             } else {
-                logger.error("Error al obtener credenciales de IAM. Código: {}", 
+                logger.error("Error getting credentials from IAM. Status code: {}", 
                         response.getStatusCode());
-                throw new RuntimeException("Error al obtener credenciales de IAM: " + 
+                throw new RuntimeException("Error getting credentials from IAM: " + 
                         response.getStatusCode());
             }
             
         } catch (Exception e) {
-            logger.error("Error en comunicación con IAM: {}", e.getMessage(), e);
-            throw new RuntimeException("Error al obtener credenciales de IAM", e);
+            logger.error("Error in IAM communication: {}", e.getMessage(), e);
+            throw new RuntimeException("Error getting credentials from IAM", e);
         }
     }
     
     /**
-     * Prepara la solicitud para AWS IAM RolesAnywhere
+     * Prepares the request for AWS IAM RolesAnywhere
      * 
-     * @param trustAnchorArn ARN del trust anchor
-     * @param profileArn ARN del perfil
-     * @param roleArn ARN del rol
-     * @param sessionName Nombre de la sesión
-     * @return Mapa con el cuerpo de la solicitud
+     * @param trustAnchorArn Trust anchor ARN
+     * @param profileArn Profile ARN
+     * @param roleArn Role ARN
+     * @param sessionName Session name
+     * @return Map with the request body
      */
     public Map<String, Object> createIamRequestBody(
             String trustAnchorArn,
@@ -256,7 +258,7 @@ public class AwsIamAuthUtil {
         requestBody.put("profileArn", profileArn);
         requestBody.put("trustAnchorArn", trustAnchorArn);
         requestBody.put("roleArn", roleArn);
-        requestBody.put("durationSeconds", 3600); // 1 hora
+        requestBody.put("durationSeconds", 3600); // 1 hour
         
         if (sessionName != null && !sessionName.isEmpty()) {
             requestBody.put("sessionName", sessionName);
