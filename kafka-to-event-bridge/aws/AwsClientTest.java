@@ -6,9 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -37,7 +35,6 @@ public class AwsClientTest {
     @Mock
     private RestTemplate restTemplate;
     
-    // Spy on the class to test to allow partial mocking
     @InjectMocks
     private AwsClient awsClient;
     
@@ -48,15 +45,20 @@ public class AwsClientTest {
     
     @BeforeEach
     void setUp() {
-        // Set only the necessary fields for the tests
+        // Set only essential fields
         ReflectionTestUtils.setField(awsClient, "regionAws1", regionAws1);
         ReflectionTestUtils.setField(awsClient, "regionAws2", regionAws2);
         ReflectionTestUtils.setField(awsClient, "eventBridgeHostAws1", eventBridgeHostAws1);
         ReflectionTestUtils.setField(awsClient, "eventBridgeHostAws2", eventBridgeHostAws2);
         
-        // Mock static or utility methods that don't need to vary between tests
-        when(awsIamAuthGenerate.createEventBridgeHeaders(any(), any(), any(), any()))
+        // Mock ResponseEntity for RestTemplate
+        ResponseEntity<String> mockResponse = mock(ResponseEntity.class);
+        
+        // Common mocks that apply to all tests - use lenient() to avoid "unnecessary stubbing" errors
+        lenient().when(awsIamAuthGenerate.createEventBridgeHeaders(any(), any(), any(), any()))
             .thenReturn(new HttpHeaders());
+        lenient().when(restTemplate.postForEntity(anyString(), any(), eq(String.class)))
+            .thenReturn(mockResponse);
     }
     
     @Test
@@ -68,46 +70,8 @@ public class AwsClientTest {
         validCredentials.put("sessionToken", "testSessionToken");
         validCredentials.put("expiration", String.valueOf(Instant.now().plusSeconds(3600).toEpochMilli()));
         
+        // Only mock what this test specifically needs
         when(redisClient.getAwsCredentials(any(), eq(true))).thenReturn(validCredentials);
-        
-        // CRITICAL: Mock the RestTemplate to return a non-null response
-        ResponseEntity<String> mockResponse = mock(ResponseEntity.class);
-        when(restTemplate.postForEntity(anyString(), any(), eq(String.class)))
-            .thenReturn(mockResponse);
-        
-        // Act
-        boolean result = awsClient.sendEventToAws1(new HashMap<>());
-        
-        // Assert
-        assertTrue(result);
-    }
-    
-    @Test
-    void sendEventToAws1_withExpiredCredentials_generatesNewCredentials() {
-        // Arrange
-        // 1. Create expired credentials
-        Map<String, Object> expiredCredentials = new HashMap<>();
-        expiredCredentials.put("accessKey", "expiredKey");
-        expiredCredentials.put("secretKey", "expiredSecret");
-        expiredCredentials.put("expiration", String.valueOf(Instant.now().minusSeconds(60).toEpochMilli()));
-        
-        // 2. Create new credentials that will be generated
-        Map<String, Object> newCredentials = new HashMap<>();
-        newCredentials.put("accessKey", "newKey");
-        newCredentials.put("secretKey", "newSecret");
-        newCredentials.put("sessionToken", "newToken");
-        newCredentials.put("expiration", String.valueOf(Instant.now().plusSeconds(3600).toEpochMilli()));
-        
-        // 3. Setup mocks
-        when(redisClient.getAwsCredentials(any(), eq(true))).thenReturn(expiredCredentials);
-        when(awsIamAuthGenerate.createIamRequestBody(any(), any(), any(), any())).thenReturn(new HashMap<>());
-        when(awsIamAuthGenerate.decodeBase64(any())).thenReturn("dummy".getBytes());
-        when(awsIamAuthGenerate.getAwsCredentialsFromIam(any(), any(), any())).thenReturn(newCredentials);
-        
-        // CRITICAL: Mock the RestTemplate to return a non-null response
-        ResponseEntity<String> mockResponse = mock(ResponseEntity.class);
-        when(restTemplate.postForEntity(anyString(), any(), eq(String.class)))
-            .thenReturn(mockResponse);
         
         // Act
         boolean result = awsClient.sendEventToAws1(new HashMap<>());
@@ -126,8 +90,8 @@ public class AwsClientTest {
         
         when(redisClient.getAwsCredentials(any(), eq(true))).thenReturn(validCredentials);
         
-        // Mock RestTemplate to throw exception
-        when(restTemplate.postForEntity(anyString(), any(), eq(String.class)))
+        // Override the common mock for this specific test
+        when(restTemplate.postForEntity(contains(eventBridgeHostAws1), any(), eq(String.class)))
             .thenThrow(new RuntimeException("Test exception"));
         
         // Act
@@ -147,13 +111,45 @@ public class AwsClientTest {
         
         when(redisClient.getAwsCredentials(any(), eq(false))).thenReturn(validCredentials);
         
-        // CRITICAL: Mock the RestTemplate to return a non-null response
-        ResponseEntity<String> mockResponse = mock(ResponseEntity.class);
-        when(restTemplate.postForEntity(anyString(), any(), eq(String.class)))
-            .thenReturn(mockResponse);
-        
         // Act
         boolean result = awsClient.sendEventToAws2(new HashMap<>());
+        
+        // Assert
+        assertTrue(result);
+    }
+    
+    // Test with separate mock configurations to avoid any unwanted stub interactions
+    
+    @Test
+    void sendEventToAws1_withExpiredCredentials_generatesNewCredentials() {
+        // Setup a completely separate test with its own mocks
+        AwsClient localAwsClient = new AwsClient(redisClient, awsIamAuthGenerate, restTemplate);
+        
+        // Set field values
+        ReflectionTestUtils.setField(localAwsClient, "regionAws1", regionAws1);
+        ReflectionTestUtils.setField(localAwsClient, "eventBridgeHostAws1", eventBridgeHostAws1);
+        
+        // Create expired credentials
+        Map<String, Object> expiredCredentials = new HashMap<>();
+        expiredCredentials.put("accessKey", "expiredKey");
+        expiredCredentials.put("secretKey", "expiredSecret");
+        expiredCredentials.put("expiration", String.valueOf(Instant.now().minusSeconds(60).toEpochMilli()));
+        
+        // Create new credentials
+        Map<String, Object> newCredentials = new HashMap<>();
+        newCredentials.put("accessKey", "newKey");
+        newCredentials.put("secretKey", "newSecret");
+        newCredentials.put("sessionToken", "newToken");
+        newCredentials.put("expiration", String.valueOf(Instant.now().plusSeconds(3600).toEpochMilli()));
+        
+        // Configure mocks specifically for this test
+        when(redisClient.getAwsCredentials(any(), eq(true))).thenReturn(expiredCredentials);
+        when(awsIamAuthGenerate.getAwsCredentialsFromIam(any(), any(), any())).thenReturn(newCredentials);
+        when(awsIamAuthGenerate.createEventBridgeHeaders(any(), any(), any(), any())).thenReturn(new HttpHeaders());
+        when(restTemplate.postForEntity(any(), any(), eq(String.class))).thenReturn(mock(ResponseEntity.class));
+        
+        // Act
+        boolean result = localAwsClient.sendEventToAws1(new HashMap<>());
         
         // Assert
         assertTrue(result);
@@ -161,27 +157,28 @@ public class AwsClientTest {
     
     @Test
     void sendEventToAws2_withNoCredentialsInCache_generatesNewCredentials() {
-        // Arrange
-        // 1. New credentials that will be generated
+        // Setup a completely separate test with its own mocks
+        AwsClient localAwsClient = new AwsClient(redisClient, awsIamAuthGenerate, restTemplate);
+        
+        // Set field values
+        ReflectionTestUtils.setField(localAwsClient, "regionAws2", regionAws2);
+        ReflectionTestUtils.setField(localAwsClient, "eventBridgeHostAws2", eventBridgeHostAws2);
+        
+        // New credentials that will be generated
         Map<String, Object> newCredentials = new HashMap<>();
         newCredentials.put("accessKey", "newKey");
         newCredentials.put("secretKey", "newSecret");
         newCredentials.put("sessionToken", "newToken");
         newCredentials.put("expiration", String.valueOf(Instant.now().plusSeconds(3600).toEpochMilli()));
         
-        // 2. Setup mocks
+        // Configure mocks specifically for this test
         when(redisClient.getAwsCredentials(any(), eq(false))).thenReturn(null);
-        when(awsIamAuthGenerate.createIamRequestBody(any(), any(), any(), any())).thenReturn(new HashMap<>());
-        when(awsIamAuthGenerate.decodeBase64(any())).thenReturn("dummy".getBytes());
         when(awsIamAuthGenerate.getAwsCredentialsFromIam(any(), any(), any())).thenReturn(newCredentials);
-        
-        // CRITICAL: Mock the RestTemplate to return a non-null response
-        ResponseEntity<String> mockResponse = mock(ResponseEntity.class);
-        when(restTemplate.postForEntity(anyString(), any(), eq(String.class)))
-            .thenReturn(mockResponse);
+        when(awsIamAuthGenerate.createEventBridgeHeaders(any(), any(), any(), any())).thenReturn(new HttpHeaders());
+        when(restTemplate.postForEntity(any(), any(), eq(String.class))).thenReturn(mock(ResponseEntity.class));
         
         // Act
-        boolean result = awsClient.sendEventToAws2(new HashMap<>());
+        boolean result = localAwsClient.sendEventToAws2(new HashMap<>());
         
         // Assert
         assertTrue(result);
@@ -189,22 +186,22 @@ public class AwsClientTest {
     
     @Test
     void sendEventToAws2_withIamException_usesMockCredentials() {
-        // Arrange
-        when(redisClient.getAwsCredentials(any(), eq(false))).thenReturn(null);
-        when(awsIamAuthGenerate.createIamRequestBody(any(), any(), any(), any())).thenReturn(new HashMap<>());
-        when(awsIamAuthGenerate.decodeBase64(any())).thenReturn("dummy".getBytes());
+        // Setup a completely separate test with its own mocks
+        AwsClient localAwsClient = new AwsClient(redisClient, awsIamAuthGenerate, restTemplate);
         
-        // Mock IAM to throw exception
+        // Set field values
+        ReflectionTestUtils.setField(localAwsClient, "regionAws2", regionAws2);
+        ReflectionTestUtils.setField(localAwsClient, "eventBridgeHostAws2", eventBridgeHostAws2);
+        
+        // Configure mocks specifically for this test
+        when(redisClient.getAwsCredentials(any(), eq(false))).thenReturn(null);
         when(awsIamAuthGenerate.getAwsCredentialsFromIam(any(), any(), any()))
             .thenThrow(new RuntimeException("IAM Error"));
-        
-        // CRITICAL: Mock the RestTemplate to return a non-null response
-        ResponseEntity<String> mockResponse = mock(ResponseEntity.class);
-        when(restTemplate.postForEntity(anyString(), any(), eq(String.class)))
-            .thenReturn(mockResponse);
+        when(awsIamAuthGenerate.createEventBridgeHeaders(any(), any(), any(), any())).thenReturn(new HttpHeaders());
+        when(restTemplate.postForEntity(any(), any(), eq(String.class))).thenReturn(mock(ResponseEntity.class));
         
         // Act
-        boolean result = awsClient.sendEventToAws2(new HashMap<>());
+        boolean result = localAwsClient.sendEventToAws2(new HashMap<>());
         
         // Assert
         assertTrue(result);
