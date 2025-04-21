@@ -45,8 +45,7 @@ public class RedisClientTest {
         ReflectionTestUtils.setField(redisClient, "partitionIdentifier", partitionIdentifier);
         ReflectionTestUtils.setField(redisClient, "partitionIdentifierAWS1", partitionIdentifierAWS1);
         
-        // Setup mock for redisTemplate.opsForValue()
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        // No configuramos redisTemplate.opsForValue() aquí para evitar stubbings innecesarios
     }
     
     @Test
@@ -57,6 +56,9 @@ public class RedisClientTest {
         credentials.put("secretKey", "testSecretKey");
         
         String expectedRedisKey = partitionIdentifierAWS1 + ":" + testKey;
+        
+        // Configurar el stub solo en este test
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         
         // Act
         redisClient.storeAwsCredentials(testKey, credentials, true);
@@ -75,6 +77,9 @@ public class RedisClientTest {
         
         String expectedRedisKey = partitionIdentifier + ":" + testKey;
         
+        // Configurar el stub solo en este test
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        
         // Act
         redisClient.storeAwsCredentials(testKey, credentials, false);
         
@@ -91,6 +96,9 @@ public class RedisClientTest {
         expectedCredentials.put("secretKey", "testSecretKey");
         
         String expectedRedisKey = partitionIdentifierAWS1 + ":" + testKey;
+        
+        // Configurar los stubs solo en este test
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(eq(expectedRedisKey))).thenReturn(expectedCredentials);
         
         // Act
@@ -109,6 +117,9 @@ public class RedisClientTest {
         expectedCredentials.put("secretKey", "testSecretKey");
         
         String expectedRedisKey = partitionIdentifier + ":" + testKey;
+        
+        // Configurar los stubs solo en este test
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(eq(expectedRedisKey))).thenReturn(expectedCredentials);
         
         // Act
@@ -123,6 +134,9 @@ public class RedisClientTest {
     void getAwsCredentials_whenKeyNotFound_returnsNull() {
         // Arrange
         String expectedRedisKey = partitionIdentifier + ":" + testKey;
+        
+        // Configurar los stubs solo en este test
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(eq(expectedRedisKey))).thenReturn(null);
         
         // Act
