@@ -3,9 +3,7 @@ package com.santander.sov.epppaym.sovepppaym01pymt0028v1gms.util;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -27,7 +25,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 public class AwsIamAuthGenerateTest {
 
-    @InjectMocks
+    // Ya no usamos @InjectMocks - creamos la instancia manualmente
     private AwsIamAuthGenerate awsIamAuthGenerate;
 
     @Mock
@@ -40,6 +38,9 @@ public class AwsIamAuthGenerateTest {
 
     @BeforeEach
     void setUp() {
+        // Inicializar la clase bajo prueba manualmente con el mock
+        awsIamAuthGenerate = new AwsIamAuthGenerate(restTemplate);
+        
         // Prepare test data
         String sampleCertificate = "Sample certificate content";
         String sampleKey = "Sample key content";
@@ -179,7 +180,7 @@ public class AwsIamAuthGenerateTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("profileArn", "test-profile-arn");
         
-        // Mock response
+        // Mock response with proper credentials
         Map<String, Object> credentialsMap = new HashMap<>();
         credentialsMap.put("accessKeyId", "testAccessKey");
         credentialsMap.put("secretAccessKey", "testSecretKey");
@@ -191,9 +192,9 @@ public class AwsIamAuthGenerateTest {
         
         ResponseEntity<Map> mockResponse = new ResponseEntity<>(responseBody, HttpStatus.OK);
         
-        // Configurar el mock para cualquier URL y cualquier HttpEntity
+        // Configurar mock de forma explícita para la URL específica
         when(restTemplate.postForEntity(
-                anyString(), 
+                eq("https://" + iamHost + "/sessions"),
                 any(HttpEntity.class), 
                 eq(Map.class)
         )).thenReturn(mockResponse);
@@ -226,9 +227,9 @@ public class AwsIamAuthGenerateTest {
         // Crear una respuesta con error 401
         ResponseEntity<Map> mockResponse = new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
         
-        // Configurar mock para devolver error independientemente de los parámetros
+        // Configurar mock de forma explícita para la URL específica
         when(restTemplate.postForEntity(
-                anyString(), 
+                eq("https://" + iamHost + "/sessions"),
                 any(HttpEntity.class), 
                 eq(Map.class)
         )).thenReturn(mockResponse);
@@ -253,9 +254,9 @@ public class AwsIamAuthGenerateTest {
         String iamHost = "rolesanywhere.us-east-1.amazonaws.com";
         Map<String, Object> requestBody = new HashMap<>();
         
-        // Configurar el mock para lanzar una excepción cuando se llame
+        // Configurar el mock para lanzar una excepción específicamente para esta URL
         when(restTemplate.postForEntity(
-                anyString(), 
+                eq("https://" + iamHost + "/sessions"),
                 any(HttpEntity.class), 
                 eq(Map.class)
         )).thenThrow(new RuntimeException("Connection error"));

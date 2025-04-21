@@ -20,9 +20,9 @@ import java.util.Map;
  * including Base64 decoding and header generation.
  */
 @Component
-public class AwsIamAuthUtil {
+public class AwsIamAuthGenerate {
     
-    private static final Logger logger = LoggerFactory.getLogger(AwsIamAuthUtil.class);
+    private static final Logger logger = LoggerFactory.getLogger(AwsIamAuthGenerate.class);
     
     // Constants for PEM construction, defined to avoid security alerts
     private static final String CERT_HEADER = "-----" + "BEGIN CERTIFICATE" + "-----\n";
@@ -31,6 +31,14 @@ public class AwsIamAuthUtil {
     private static final String KEY_HEADER_PART2 = "PRIVATE KEY" + "-----\n";
     private static final String KEY_FOOTER_PART1 = "-----" + "END ";
     private static final String KEY_FOOTER_PART2 = "PRIVATE KEY" + "-----";
+    
+    // IMPORTANTE: RestTemplate se inyecta aquí, no se crea internamente
+    private final RestTemplate restTemplate;
+    
+    // Constructor que acepta RestTemplate por inyección de dependencias
+    public AwsIamAuthGenerate(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
     
     /**
      * Decodes a Base64 encoded certificate or key
@@ -178,17 +186,20 @@ public class AwsIamAuthUtil {
      * 
      * @param iamHost IAM service host
      * @param requestBody Request body
-     * @param restTemplate RestTemplate configured for mTLS
+     * @param customRestTemplate RestTemplate configured for mTLS (for testability)
      * @return Map with obtained credentials
      * @throws RuntimeException if there's an error communicating with IAM
      */
     public Map<String, Object> getAwsCredentialsFromIam(
             String iamHost,
             Map<String, Object> requestBody,
-            RestTemplate restTemplate) {
+            RestTemplate customRestTemplate) {
         
         try {
             logger.info("Initiating credentials request to AWS IAM: {}", iamHost);
+            
+            // Use the provided RestTemplate or fall back to the injected one
+            RestTemplate templateToUse = customRestTemplate != null ? customRestTemplate : this.restTemplate;
             
             // Create headers for the request
             HttpHeaders headers = createIamAuthHeaders();
@@ -202,7 +213,7 @@ public class AwsIamAuthUtil {
             logger.debug("Sending request to IAM: {}", iamUrl);
             
             // Execute the request
-            ResponseEntity<Map> response = restTemplate.postForEntity(
+            ResponseEntity<Map> response = templateToUse.postForEntity(
                     iamUrl, 
                     requestEntity, 
                     Map.class);
@@ -229,7 +240,7 @@ public class AwsIamAuthUtil {
             } else {
                 logger.error("Error getting credentials from IAM. Status code: {}", 
                         response.getStatusCode());
-                throw new RuntimeException("Error getting credentials from IAM: " + 
+                throw new RuntimeException("Error getting credentials from IAM. Status code: " + 
                         response.getStatusCode());
             }
             
